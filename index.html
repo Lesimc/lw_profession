@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Single Column Talent Tree</title>
+  <title>Talent Tree Planner</title>
 
   <style>
     :root{
@@ -17,6 +17,16 @@
       --green:#3bb273;
       --tile:#1d2431;
       --tile2:#202a3b;
+
+      /* dynamic column min width (computed from longest name) */
+      --talentW: 220px;
+
+      /* dropdown/input colors */
+      --dd-bg:#2a3242;
+      --dd-fg:#a8c7ff;
+
+      /* mobile quick bar height */
+      --quickbar-h: 58px;
     }
 
     *{box-sizing:border-box}
@@ -26,6 +36,7 @@
       font-family:system-ui,Segoe UI,Roboto,Arial;
       background:linear-gradient(180deg,var(--bg),#0b0d12);
       color:var(--text);
+      -webkit-tap-highlight-color: transparent;
     }
 
     header{
@@ -34,7 +45,7 @@
       background:rgba(10,12,18,.75);
       position:sticky;
       top:0;
-      z-index:2;
+      z-index:5;
       backdrop-filter: blur(6px);
     }
 
@@ -75,11 +86,9 @@
 
     .pill strong{color:var(--text)}
 
-    /* editable budget input */
-    #budgetInput{
-      width:72px;
-      background:transparent;
-      color:var(--text);
+    #treeSelect{
+      background:var(--dd-bg);
+      color:var(--dd-fg);
       border:1px solid rgba(42,50,66,.9);
       border-radius:10px;
       padding:4px 8px;
@@ -87,9 +96,25 @@
       font-size:12px;
       outline:none;
     }
-    #budgetInput:focus{
-      border-color:#3a4760;
+    #treeSelect:focus{ border-color:#3a4760; }
+    #treeSelect option,
+    #treeSelect optgroup{
+      background:var(--dd-bg);
+      color:var(--dd-fg);
     }
+
+    #budgetInput{
+      width:72px;
+      background:var(--dd-bg);
+      color:var(--dd-fg);
+      border:1px solid rgba(42,50,66,.9);
+      border-radius:10px;
+      padding:4px 8px;
+      font-weight:900;
+      font-size:12px;
+      outline:none;
+    }
+    #budgetInput:focus{ border-color:#3a4760; }
 
     button{
       background:var(--tile2);
@@ -100,8 +125,8 @@
       cursor:pointer;
       font-weight:700;
     }
+    button:hover{ border-color:#3a4760; }
 
-    /* optional build input */
     #buildBox{
       width:min(520px, 92vw);
       background:transparent;
@@ -117,8 +142,13 @@
 
     main{
       padding:18px;
-      max-width:980px;
+      max-width:1400px;
       margin:0 auto;
+    }
+
+    /* add bottom padding on mobile so quickbar doesn't cover content */
+    @media (max-width: 720px){
+      main{ padding-bottom: calc(18px + var(--quickbar-h)); }
     }
 
     .legend{
@@ -136,7 +166,6 @@
       height:10px;
       border-radius:50%;
     }
-
     .dot.red{background:var(--red)}
     .dot.yellow{background:var(--yellow)}
     .dot.green{background:var(--green)}
@@ -146,6 +175,7 @@
       border:1px solid var(--line);
       border-radius:16px;
       overflow:hidden;
+      overflow-x:auto;
     }
 
     .treeHeader{
@@ -162,13 +192,12 @@
 
     .row{
       display:grid;
-      grid-template-columns:58px 1fr 1fr 1fr;
+      grid-template-columns:58px repeat(3, minmax(var(--talentW, 220px), 1fr));
       gap:10px;
       padding:10px 12px;
       border-bottom:1px solid rgba(42,50,66,.55);
-      align-items:center;
+      align-items:start;
     }
-
     .row:last-child{border-bottom:none}
 
     .tier{
@@ -182,26 +211,41 @@
       padding:8px 0;
       font-weight:800;
       font-size:12px;
+      user-select:none;
+    }
+
+    /* (2) MOBILE STACKED LAYOUT */
+    @media (max-width: 720px){
+      .row{ grid-template-columns: 1fr; }
+      .tier{
+        justify-content:flex-start;
+        padding:8px 12px;
+      }
     }
 
     .talent{
-      position:relative;
       background:linear-gradient(180deg,var(--tile),rgba(15,20,32,.75));
       border:1px solid rgba(42,50,66,.8);
       border-radius:14px;
       padding:10px 12px;
-      min-height:62px;
+      min-height:76px;
       display:flex;
       gap:10px;
       align-items:flex-start;
-      cursor:pointer;
+      user-select:none;
+    }
+    .talent:hover{ border-color:#3a4760; }
+
+    /* locked styling */
+    .talent.locked{
+      opacity:.55;
+      filter:saturate(.85);
     }
 
-    .talent:hover{border-color:#3a4760}
-
+    /* icon container supports images */
     .icon{
-      width:34px;
-      height:34px;
+      width:54px;
+      height:54px;
       border-radius:10px;
       background:linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
       border:1px solid rgba(255,255,255,.10);
@@ -209,14 +253,19 @@
       align-items:center;
       justify-content:center;
       flex-shrink:0;
-      font-weight:900;
-      margin-top:1px;
+      overflow:hidden;
+    }
+    .icon img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      pointer-events:none;
     }
 
     .meta{
       display:flex;
       flex-direction:column;
-      gap:6px;
+      gap:8px;
       min-width:0;
       flex:1;
     }
@@ -231,29 +280,75 @@
 
     .desc{ display:none; }
 
-    .badge{
-      align-self:flex-start;
-      min-width:36px;
-      height:22px;
-      padding:0 6px;
-      border-radius:999px;
+    /* points row with +/- + info */
+    .pointRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
 
+    /* (7) Bigger touch targets on mobile */
+    .pbtn, .ibtn{
+      width:28px;
+      height:26px;
+      border-radius:10px;
+      border:1px solid rgba(42,50,66,.9);
+      background:rgba(32,42,59,.9);
+      color:var(--text);
+      font-weight:900;
+      font-size:12px;
+      line-height:1;
+      cursor:pointer;
+      padding:0;
       display:inline-flex;
       align-items:center;
       justify-content:center;
+      user-select:none;
+      touch-action: manipulation;
+    }
+    .ibtn{
+      width:26px;
+      height:26px;
+      border-radius:999px;
+      color:#a8c7ff;
+    }
+    .pbtn:hover, .ibtn:hover{ border-color:#3a4760; }
+    .pbtn:disabled{
+      opacity:.35;
+      cursor:not-allowed;
+    }
 
+    @media (max-width: 720px){
+      .pbtn, .ibtn{
+        width:38px;
+        height:38px;
+        font-size:14px;
+        border-radius:12px;
+      }
+      .ibtn{ border-radius:999px; }
+    }
+
+    .badge{
+      min-width:64px;
+      height:26px;
+      padding:0 10px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
       font-weight:900;
-      font-size:11px;
-
+      font-size:12px;
       border:2px solid rgba(0,0,0,.35);
       box-shadow:0 4px 10px rgba(0,0,0,.35);
+      user-select:none;
     }
 
     .state-red{background:var(--red)}
     .state-yellow{background:var(--yellow)}
     .state-green{background:var(--green)}
 
-    /* Tooltip */
+    /* Desktop tooltip bubble (only opens on i click) */
     .tooltip{
       position:fixed;
       z-index:9999;
@@ -263,28 +358,167 @@
       background:rgba(10,12,18,.96);
       border:1px solid rgba(42,50,66,.9);
       box-shadow:0 10px 30px rgba(0,0,0,.55);
-      pointer-events:none;
+      pointer-events:auto;
       opacity:0;
       transform:translateY(6px);
       transition:opacity .08s ease, transform .08s ease;
+      display:none;
     }
-
     .tooltip.show{
+      display:block;
       opacity:1;
       transform:translateY(0);
     }
-
     .tooltip .tt-title{
       font-weight:900;
       font-size:13px;
       margin-bottom:6px;
     }
-
     .tooltip .tt-desc{
       font-size:12px;
       color:var(--muted);
       line-height:1.35;
       white-space:pre-wrap;
+    }
+
+    /* Mobile bottom-sheet */
+    .sheetBackdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.55);
+      z-index:9998;
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .12s ease;
+    }
+    .sheetBackdrop.show{
+      opacity:1;
+      pointer-events:auto;
+    }
+
+    .sheet{
+      position:fixed;
+      left:0; right:0; bottom:0;
+      z-index:9999;
+      background:rgba(10,12,18,.98);
+      border-top:1px solid rgba(42,50,66,.95);
+      box-shadow:0 -10px 30px rgba(0,0,0,.55);
+      border-radius:16px 16px 0 0;
+      transform:translateY(110%);
+      transition:transform .18s ease;
+      padding:10px 14px 18px;
+      max-height:min(70vh, 560px);
+      overflow:auto;
+      touch-action: none;
+      will-change: transform;
+    }
+    .sheet.show{
+      transform:translateY(0);
+    }
+
+    .sheetGrabWrap{
+      padding:6px 0 8px;
+      display:flex;
+      justify-content:center;
+    }
+    .sheetGrab{
+      width:44px;
+      height:5px;
+      border-radius:999px;
+      background:rgba(232,238,252,.18);
+    }
+
+    .sheetTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .sheetTitle{
+      font-weight:900;
+      font-size:14px;
+    }
+    .sheetClose{
+      width:44px;
+      height:38px;
+      border-radius:12px;
+      border:1px solid rgba(42,50,66,.9);
+      background:rgba(32,42,59,.9);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:900;
+    }
+    .sheetDesc{
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+
+    /* On mobile, we prefer the sheet (tooltip hidden) */
+    @media (max-width: 720px){
+      .tooltip{ display:none !important; }
+    }
+
+    /* (4) Sticky quick actions bar (mobile only) */
+    .quickbar{
+      position:fixed;
+      left:0; right:0; bottom:0;
+      height:var(--quickbar-h);
+      display:none;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      z-index:20;
+      background:rgba(10,12,18,.92);
+      border-top:1px solid rgba(42,50,66,.8);
+      backdrop-filter: blur(8px);
+    }
+    .quickbar .qb-left, .quickbar .qb-right{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .quickSpent{
+      font-weight:900;
+      color:var(--text);
+      font-size:13px;
+      white-space:nowrap;
+    }
+    .quickSmall{
+      font-size:12px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .qbBtn{
+      width:44px;
+      height:38px;
+      border-radius:12px;
+      border:1px solid rgba(42,50,66,.9);
+      background:rgba(32,42,59,.9);
+      color:var(--text);
+      font-weight:900;
+      cursor:pointer;
+    }
+    .qbBtn:active{ transform:translateY(1px); }
+    .qbSelect{
+      height:38px;
+      max-width:150px;
+      background:var(--dd-bg);
+      color:var(--dd-fg);
+      border:1px solid rgba(42,50,66,.9);
+      border-radius:12px;
+      padding:0 10px;
+      font-weight:900;
+      font-size:12px;
+      outline:none;
+    }
+
+    @media (max-width: 720px){
+      .quickbar{ display:flex; }
+      .desktopOnly{ display:none !important; }
     }
   </style>
 </head>
@@ -293,11 +527,31 @@
 <header>
   <div class="top">
     <div>
-      <h1>Season 4 Engineer Profession Tree</h1>
-      <div class="sub">Click = +1 • Right-click = −1 • Shift+Click = max</div>
+      <h1 id="pageTitle">Talent Tree</h1>
+      <div class="sub desktopOnly">Tile: Click +1 • Right-click −1 • Shift+Click max • Use − / + / i buttons</div>
     </div>
 
-    <div class="controls">
+    <div class="controls desktopOnly">
+      <div class="pill">
+        Tree:
+        <select id="treeSelect">
+          <optgroup label="Engineer">
+            <option value="eng_s1">Season 1</option>
+            <option value="eng_s2" selected>Season 2</option>
+            <option value="eng_s3">Season 3</option>
+            <option value="eng_s4">Season 4</option>
+            <option value="eng_s5">Season 5</option>
+          </optgroup>
+          <optgroup label="War Leader">
+            <option value="wl_s1">Season 1</option>
+            <option value="wl_s2">Season 2</option>
+            <option value="wl_s3">Season 3</option>
+            <option value="wl_s4">Season 4</option>
+            <option value="wl_s5">Season 5</option>
+          </optgroup>
+        </select>
+      </div>
+
       <div class="pill">
         Points: <strong id="spent">0</strong> /
         <input id="budgetInput" type="number" min="0" step="1" value="115" />
@@ -308,8 +562,7 @@
     </div>
   </div>
 
-  <!-- Optional: share code import/export -->
-  <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+  <div class="desktopOnly" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <input id="buildBox" type="text" placeholder="Paste build code here (or click Copy Share Link)" />
     <button id="loadBtn" type="button">Load</button>
     <button id="copyCodeBtn" type="button">Copy Code</button>
@@ -325,309 +578,1167 @@
 
   <div class="tree">
     <div class="treeHeader">
-      <div class="name">S4 Engineer Tree</div>
+      <div class="name" id="treeName">Tree</div>
       <div class="hint" id="hint"></div>
     </div>
     <div id="rows"></div>
   </div>
 </main>
 
-<div id="tooltip" class="tooltip">
+<!-- Mobile quick actions bar -->
+<div class="quickbar" id="quickbar">
+  <div class="qb-left">
+    <select class="qbSelect" id="treeSelectMobile" aria-label="Tree">
+      <optgroup label="Engineer">
+        <option value="eng_s1">Eng S1</option>
+        <option value="eng_s2" selected>Eng S2</option>
+        <option value="eng_s3">Eng S3</option>
+        <option value="eng_s4">Eng S4</option>
+        <option value="eng_s5">Eng S5</option>
+      </optgroup>
+      <optgroup label="War Leader">
+        <option value="wl_s1">WL S1</option>
+        <option value="wl_s2">WL S2</option>
+        <option value="wl_s3">WL S3</option>
+        <option value="wl_s4">WL S4</option>
+        <option value="wl_s5">WL S5</option>
+      </optgroup>
+    </select>
+
+    <div>
+      <div class="quickSpent"><span id="spentMobile">0</span> / <span id="budgetMobile">115</span></div>
+      <div class="quickSmall">Tap budget to edit</div>
+    </div>
+  </div>
+
+  <div class="qb-right">
+    <button class="qbBtn" id="editBudgetBtn" type="button" title="Edit budget">✎</button>
+    <button class="qbBtn" id="copyLinkBtnMobile" type="button" title="Copy link">⤴</button>
+    <button class="qbBtn" id="resetBtnMobile" type="button" title="Reset">↺</button>
+  </div>
+</div>
+
+<!-- Desktop tooltip bubble -->
+<div id="tooltip" class="tooltip" aria-hidden="true">
   <div class="tt-title" id="ttTitle"></div>
   <div class="tt-desc" id="ttDesc"></div>
 </div>
 
+<!-- Mobile bottom sheet -->
+<div id="sheetBackdrop" class="sheetBackdrop" aria-hidden="true"></div>
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="sheetGrabWrap"><div class="sheetGrab" id="sheetGrab"></div></div>
+  <div class="sheetTop">
+    <div class="sheetTitle" id="sheetTitle"></div>
+    <button class="sheetClose" id="sheetCloseBtn" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="sheetDesc" id="sheetDesc"></div>
+</div>
+
 <script>
-/* Budget is editable */
-let POINT_BUDGET = 115;
+  const TIERS_DEFAULT = [100,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,5,1];
 
-const TIERS = [100,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,5,1];
+  /* Example Engineer S2 (replace/extend with your full list)
+     ✅ Dependencies: add `requires: [{id:"someTalentId", min: N}, ...]` */
+  const ENGINEER_S2 = [
+    { id:"s2_e1_1", tier:1, slot:0, icon:"icon/rapid_production.png", name:"Rapid Production", desc:"Use it to immediately gain 4 hours per Level of production from in-base Food, Iron and Coin buildings, cooldown 24 hours.", max:5 },
+    { id:"s2_e1_2", tier:1, slot:1, icon:"icon/outstanding_contribution.png", name:"Outstanding Contribution", desc:"Donating Tech helps increase Alliance Contribution earned.", max:1, requires: [{ id:"rp", min: 1 }]},
+    { id:"s2_e1_3", tier:1, slot:2, icon:"💉", name:"Combat Experience",desc:"Increased Profession EXP by 20% per level from killing monsters.", max:3 },
+  ];
+  const ENGINEER_S3 =[
+    // Lv. 1
+    { id:"s3_e1_1", tier:1, slot:0, icon:"icon/rapid_production.png", name:"Rapid Production", desc:"Use it to immediately gain 4 hours per Level of production from in-base Food, Iron and Coin buildings, cooldown 24 hours.", max:5 },
+    { id:"s3_e1_2", tier:1, slot:1, icon:"icon/outstanding_contribution.png", name:"Outstanding Contribution", desc:"Donating Tech helps increase Alliance Contribution earned.", max:1 },
+    { id:"s3_e1_3", tier:1, slot:2, icon:"icon/combat_expierence.png", name:"Combat Experience", desc:"Increased Profession EXP by 20% per level from killing monsters.", max:3 },
+    //Lv.5
+    { id:"s3_e2_1", tier:5, slot:0, icon:"icon/extra_meal.png", name:"Extra Meal", desc:"The effect of Daily Freebie for stamina has been improved.", max:1 },
+    { id:"s3_e2_2", tier:5, slot:1, icon:"icon/siege_mastery.png", name:"Siege Mastery", desc:"Unit durability damage increases by 100 (based on level)", max:5 },
+    { id:"s3_e2_3", tier:5, slot:2, icon:"icon/building_inspiration.png", name:"Building Inspiration", desc:"Increased Profession EXP from upgrading Season building.", max:3 },
+    //Lv.10
+    { id:"s3_e3_1", tier:10, slot:0, icon:"icon/build_for_free.png", name:"Build for Free", desc:"Increase free speed-up time for Constructions by 48 min per Level.", max:1 },
+    { id:"s3_e3_2", tier:10, slot:1, icon:"icon/research_for_free.png", name:"Research for Free", desc:"Increase free speed-up time for Research by 48 min per Level.", max:5 },
+    { id:"s3_e3_3", tier:10, slot:2, icon:"icon/double_exchange.png", name:"Double Exchange", desc:"Exchange two types of seasonal resources at 1:2 ration, consuming 5.000 (up to 25.000) and gaining 10.000 (up to 50.000), with a cooldown of 47.5 hours.", max:3 },
+    //Lv.15
+    { id:"s3_e4_1", tier:15, slot:0, icon:"icon/build_now.png", name:"Build Now", desc:"Use it to immediately reduce all Construction Queue time by 120 minutes (based on level), cooldown 47.5 hours.", max:5 },
+    { id:"s3_e4_2", tier:15, slot:1, icon:"icon/research_now.png", name:"Research Now", desc:"Use it to immediately reduce all Research Queue time by 240 minutes (based on level), cooldown 47.5 hours", max:5 },
+    { id:"s3_e4_3", tier:15, slot:2, icon:"icon/cont_land_teleport.png", name:"Contaminated Land Teleport", desc:"Gain a free Contaminated Land Teleport every 47.5 hours without consuming items, up to 1 stored at a time.", max:1 },
+    //Lv.20
+    { id:"s3_e5_1", tier:20, slot:0, icon:"icon/rally_rush.png", name:"Rally Rush", desc:"Joining or returning with rallies boosts troop marching speed by 10/20/30/40/50%.", max:5 },
+    { id:"s3_e5_2", tier:20, slot:1, icon:"icon/siege_banner.png", name:"Siege Banner", desc:"Use it to set up “Siege Banner”. Increases the damage of allies whose bases are within the banner’s range by 100, lasting 30 minute, cooldown 72 hours (stack up to 5 times)", max:1 },
+    { id:"s3_e5_3", tier:20, slot:2, icon:"icon/double_conversion.png", name:"Double Conversion", desc:"Enhance your efficiency in helping allies convert Protectors", max:1 },
+    //Lv.25
+    { id:"s3_e6_1", tier:25, slot:0, icon:"icon/siege_inspiration.png", name:"Siege Inspiration", desc:"Increased Profession EXP from damaging City Durability by 20% (based on level).", max:3 },
+    { id:"s3_e6_2", tier:25, slot:1, icon:"icon/friendly_aid.png", name:"Friendly Aid", desc:"When reinforcing an ally’s base, the casualty rate of the Drill Ground’s units decreases (not stackable) by 5% (based on level).", max:5 },
+    { id:"s3_e6_3", tier:25, slot:2, icon:"icon/professional_insight.png", name:"Professional Insights", desc:"Use to instantly gain 2% (up to 10%) of your current level’s Profession EXP, up to a maximum of 100,000, with a cooldown of 23.5 hours.", max:5 },
+    //Lv.30
+    { id:"s3_e7_1", tier:30, slot:0, icon:"icon/cooperative_construction.png", name:"Cooperative Construction", desc:"Boost building speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack).", max:2 },
+    { id:"s3_e7_2", tier:30, slot:1, icon:"icon/cooperative_research.png", name:"Cooperative Research", desc:"Boost research speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack)", max:2 },
+    { id:"s3_e7_3", tier:30, slot:2, icon:"icon/sand_protection.png", name:"Sand’s Protection", desc:"While within the Alliance Center’s range, defending heroes in your base gain extra Defense 1/2/3/4/5%", max:5 },
+    //Lv.35
+    { id:"s3_e8_1", tier:35, slot:0, icon:"icon/resource_saving.png", name:"Resource-Saving", desc:"Reduce the cost of Food, Iron, and Coin for construction by 1/2/3/4/5%.", max:5 },
+    { id:"s3_e8_2", tier:35, slot:1, icon:"icon/recycling.png", name:"Recycling", desc:"Reduce the cost of Food, Iron, and Coin for research by 1/2/3/4/5%.", max:5 },
+    { id:"s3_e8_3", tier:35, slot:2, icon:"icon/double_greenification.png", name:"Double Greenification", desc:"Greenification now covers a larger area per use (1×1 to 3×3)", max:1 },
+    //Lv.40
+    { id:"s3_e9_1", tier:40, slot:0, icon:"icon/medical_aid.png", name:"Medial Aid", desc:"Choose an Ally to use. After use, both yours and their Hospital’s Capacity increase by 10/20/30/40/50%, lasting for 240 minutes, cooldown 72 hours (multiple instances do not stack)", max:5 },
+    { id:"s3_e9_2", tier:40, slot:1, icon:"icon/buddy_shield.png", name:"Buddy Shield", desc:"Activate a shield for 1/2/4 hours for yourself or an ally, with a 71.5-hour cooldown (effects do not stack)", max:3 },
+    { id:"s3_e9_3", tier:40, slot:2, icon:"icon/fragile_spell.png", name:"Fragile Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the target base’s max durability by 1,000 (up to 5000)", max:1 },
+    //Lv.45
+    { id:"s3_e10_1", tier:45, slot:0, icon:"icon/drone_supply.png", name:"Drone Supply", desc:"Use this item to get a level 1/2/3/4/5 Engineer skill reward. Cooldown 23.5h", max:5 },
+    { id:"s3_e10_2", tier:45, slot:1, icon:"icon/fearless_defense.png", name:"Fearless Defense", desc:"When defending the base, a proportion of the attacking units will be killed based on the level and number of your fallen units +1% (up to 5%)", max:5 },
+    { id:"s3_e10_3", tier:45, slot:2, icon:"icon/shrinking_spell.png", name:"Shrinking Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the visual size of the target base by 15% stacking up to 5 times.", max:1, requires: [{ id:"s3_e8_3", min: 1 }] },
+    //Lv.50
+    { id:"s3_e11_1", tier:50, slot:0, icon:"icon/random_visitor.png", name:"Random Visitors", desc:"Get 1 random survivor. 119.5 hours (down to 23.5 hours) cooldown", max:5 },
+    { id:"s3_e11_2", tier:50, slot:1, icon:"icon/durability_mine.png", name:"Durability Mine", desc:"Deploy a [Durability Landmine] in the original Warzone. When triggered, it lowers the target’s durability by 500 points, At max level, it can ignite the enemy base. The mine lasts 24-hour, cooldown 72 hours. You can store up to 2.", max:5 },
+    { id:"s3_e11_3", tier:50, slot:2, icon:"icon/protector_oath.png", name:"Protector’s Oath", desc:"Instantly obtain 30 (up to 100) highest level Desert Protectors. Cooldown: 71.5 hours", max:1 },
+    //Lv.55
+    { id:"s3_e12_1", tier:55, slot:0, icon:"icon/one_more.png", name:"One More", desc:"The daily task points chest has a 5% (up to 25%) chance to double your rewards.", max:5 },
+    { id:"s3_e12_2", tier:55, slot:1, icon:"icon/support_boost.png", name:"Support Boost", desc:"Time helped per action +30 seconds ( up to 150 seconds)", max:5 },
+    { id:"s3_e12_3", tier:55, slot:2, icon:"icon/sandstorm.png", name:"Sandstorm", desc:"Summon a sandstorm lasting 10 minutes. Within a 9×9 range, base troop march speed is reduced by 20%, cooldown 47.5 hours, and the area becomes desert terrain. This effect cannot stack.", max:1},
+    //Lv.60
+    { id:"s3_e13_1", tier:60, slot:0, icon:"icon/efficient_gathering.png", name:"Efficient Gathering", desc:"Gathering speed +5 % (up to 25 % )", max:5 },
+    { id:"s3_e13_2", tier:60, slot:1, icon:"icon/first_aid_expert.png", name:"First Aid Expert", desc:"When defeated, the proportion entering the Emergency Center +1/2/3/4/5%", max:5 },
+    { id:"s3_e13_3", tier:60, slot:2, icon:"icon/nature_touch.png", name:"Nature’s Touch", desc:"Transforms a 9×9 tile area into green land (you may find uncover artifacts there). Can only be placed in areas that can be greenified and does not stack. Cooldown: 47.5 hours", max:1 },
+    //Lv.65
+    { id:"s3_e14_1", tier:65, slot:0, icon:"icon/battlefield_cleanup.png", name:"Battlefield Cleanup", desc:"After defeating Ironhead, Glutton, Miser, and Doom Elites, the gain for Coin, Food, and Iron +2/4/6/8/10%", max:5 },
+    { id:"s3_e14_2", tier:65, slot:1, icon:"icon/master_builder.png", name:"Master Builder", desc:"Building speedup +5 % (up to +25 %)", max:5 },
+    { id:"s3_e14_3", tier:65, slot:2, icon:"icon/trap_landmine.png", name:"Trap Landmine", desc:"Deploy a Trap Landmine on vacant area, targeting underground creatures. Position them in their path to force them above ground. Lasts for 10 minutes, cooldown 11.5 hours, stores up to 3.", max:1 },
+    //Lv.70
+    { id:"s3_e15_1", tier:70, slot:0, icon:"icon/instant_gathering.png", name:"Instant Gathering", desc:"When used, all squads currently gathering at iron mines, farmland, or gold mines will immediately collect the remaining resources from the gathering tile and return (cannot exceed the squad’s load capacity). Cooldown: 119.5 hours (down to 23.5 hours). Only usable in your home warzone.", max:5 },
+    { id:"s3_e15_2", tier:70, slot:1, icon:"icon/monster _tracking.png", name:"Monster Tracking", desc:"Marching speed against monsters +5 % (up to 25 %)", max:5 },
+    { id:"s3_e15_3", tier:70, slot:2, icon:"icon/indomitable_will.png", name:"Indomitable Will", desc:"When Desert Protectors die during a march, 3% (up to 10%) of them regroup back at the base.", max:1 },
+    //Lv.75
+    { id:"s3_e16_1", tier:75, slot:0, icon:"icon/win_win_cooperation.png", name:"Win-Win Cooperation", desc:"Can only be used on the War Leader Reduces their construction and tech research costs by 5% for 24 hours. Earn 1 rewards. Cooldown: 23.5 hours.", max:1 },
+    { id:"s3_e16_2", tier:75, slot:1, icon:"icon/free_teleport.png", name:"Free Teleport", desc:"Gain one free Advanced Teleport chance every 71.5 hours, up to 1 (up to 3) stored at a time.", max:3 },
+    { id:"s3_e16_3", tier:75, slot:2, icon:"icon/explosive_enhancement.png", name:"Explosive Enhancement", desc:"The Desert Protector’s Death Shockwave ratio is increased.", max:1 },
+    //Lv.80
+    { id:"s3_e17_1", tier:80, slot:0, icon:"icon/trucks_expansion.png", name:"Truck Expansion", desc:"Increases the amount of Iron, Food, and Coins carried by the Truck by +5 % (up to 25%).", max:5 },
+    { id:"s3_e17_2", tier:80, slot:1, icon:"icon/helping_hand.png", name:"Helping Hand", desc:"Increases the number of helps received by +1 (up to +5)", max:5 },
+    { id:"s3_e17_3", tier:80, slot:2, icon:"icon/sandworm_trap.png", name:"Sandworm Trap", desc:"Deploy Sandworm Trap in your home warzone: the target will be entangled by the sandworm after triggering. Commanders from the same warzone and faction are immune. The trap lasts 24 hours with a 71.5-hour cooldown.", max:1 },
+    //Lv.85
+    { id:"s3_e18_1", tier:85, slot:0, icon:"icon/speedup_box.png", name:"Speedup Box", desc:"It grands 1 (up to 5) random speedup item(s). Cooldown: 23.5 hours", max:5 },
+    { id:"s3_e18_2", tier:85, slot:1, icon:"icon/emergency_capacity.png", name:"Emergency Capacity", desc:"Increase the capacity limit by 50/100/150/200/250 of the Emergency Center.", max:5 },
+    { id:"s3_e18_3", tier:85, slot:2, icon:"icon/trade_discount.png", name:"Trade Discount", desc:"Enjoy 10% extra discounts when purchasing items from Trade Posts.", max:1 },
+    //Lv.90
+    { id:"s3_e19_1", tier:90, slot:0, icon:"icon/willing_helper.png", name:"Willing Helper", desc:"When helping allies, you earn an extra 50 Alliance Contribution Points (does not affect contribution rankings). Daily limit: 4 times (up to 20).", max:5 },
+    { id:"s3_e19_2", tier:90, slot:1, icon:"icon/enhance_siege_banner.png", name:"Enhance Siege Banner", desc:"Upgrade the Siege Banner to gain an additional +10% rally and march speed {unlocks at Siege Banner max level), lasts 30 minutes, cooldown 71.5 hours (stacks up to 5 times).", max:1 },
+    { id:"s3_e19_3", tier:85, slot:2, icon:"icon/summon_mummies.png", name:"Summon Mummies", desc:"Target an unshielded enemy commander to summon a mummy boss near your base. The boss will march to attack the target for 30 minutes, cooldown 71.5 hours. Enemy commander = Commanders from the same warzone and faction are immune. IMPORTANT: you need Protector’s Field at level 25 to learn (acquire) this skill.", max:1 },
+    //Lv.95
+    { id:"s3_e20_1", tier:95, slot:0, icon:"icon/coop_construction_II.png", name:"Cooperative Construction II", desc:"Cooperative Construction Upgrade: Each level adds +5% construction speed boost (unlocks at Cooperative Construction max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
+    { id:"s3_e20_2", tier:95, slot:1, icon:"icon/coop_research_II.png", name:"Cooperative Research II", desc:"Cooperative Research Upgrade: Each level adds +5% research speed boost (unlocks at Cooperative Research max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
+    //Lv.100
+    { id:"s3_e21_1", tier:100, slot:0, icon:"icon/one_more_time.png", name:"One More Time", desc:"When using an active skill (with a hexagon-shaped icon), there is a 4% (up to 20%) chance to skip cooldown. Each skill can trigger this effect only once per day.", max:5 },
+    { id:"s3_e21_2", tier:100, slot:1, icon:"icon/blast.png", name:"Blast", desc:"Use it on your base to activate War Fever mode, triggering a 60-second Blast countdown. The blast will damage nearby 3 base tiles, reducing their durability by 25%, Cooldown: 71.5 hours.", max:1 }
+  ]
+  const ENGINEER_S4 =[
+    // Lv. 1
+    { id:"s4_e1_1", tier:1, slot:0, icon:"icon/rapid_production.png", name:"Rapid Production", desc:"Use it to immediately gain 4 hours per Level of production from in-base Food, Iron and Coin buildings, cooldown 24 hours.", max:5 },
+    { id:"s4_e1_2", tier:1, slot:1, icon:"icon/outstanding_contribution.png", name:"Outstanding Contribution", desc:"Donating Tech helps increase Alliance Contribution earned.", max:1 },
+    { id:"s4_e1_3", tier:1, slot:2, icon:"icon/combat_expierence.png", name:"Combat Experience", desc:"Increased Profession EXP by 20% per level from killing monsters.", max:3 },
+    //Lv.5
+    { id:"s4_e2_1", tier:5, slot:0, icon:"icon/extra_meal.png", name:"Extra Meal", desc:"The effect of Daily Freebie for stamina has been improved.", max:1 },
+    { id:"s4_e2_2", tier:5, slot:1, icon:"icon/siege_mastery.png", name:"Siege Mastery", desc:"Unit durability damage increases by 100 (based on level)", max:5 },
+    { id:"s4_e2_3", tier:5, slot:2, icon:"icon/building_inspiration.png", name:"Building Inspiration", desc:"Increased Profession EXP from upgrading Season building.", max:3 },
+    //Lv.10
+    { id:"s4_e3_1", tier:10, slot:0, icon:"icon/build_for_free.png", name:"Build for Free", desc:"Increase free speed-up time for Constructions by 48 min per Level.", max:1 },
+    { id:"s4_e3_2", tier:10, slot:1, icon:"icon/research_for_free.png", name:"Research for Free", desc:"Increase free speed-up time for Research by 48 min per Level.", max:5 },
+    { id:"s4_e3_3", tier:10, slot:2, icon:"icon/double_exchange.png", name:"Double Exchange", desc:"Exchange two types of seasonal resources at 1:2 ration, consuming 5.000 (up to 25.000) and gaining 10.000 (up to 50.000), with a cooldown of 47.5 hours.", max:3 },
+    //Lv.15
+    { id:"s4_e4_1", tier:15, slot:0, icon:"icon/build_now.png", name:"Build Now", desc:"Use it to immediately reduce all Construction Queue time by 120 minutes (based on level), cooldown 47.5 hours.", max:5 },
+    { id:"s4_e4_2", tier:15, slot:1, icon:"icon/research_now.png", name:"Research Now", desc:"Use it to immediately reduce all Research Queue time by 240 minutes (based on level), cooldown 47.5 hours", max:5 },
+    { id:"s4_e4_3", tier:15, slot:2, icon:"icon/cont_land_teleport.png", name:"Contaminated Land Teleport", desc:"Gain a free Contaminated Land Teleport every 47.5 hours without consuming items, up to 1 stored at a time.", max:1 },
+    //Lv.20
+    { id:"s4_e5_1", tier:20, slot:0, icon:"icon/rally_rush.png", name:"Rally Rush", desc:"Joining or returning with rallies boosts troop marching speed by 10/20/30/40/50%.", max:5 },
+    { id:"s4_e5_2", tier:20, slot:1, icon:"icon/siege_banner.png", name:"Siege Banner", desc:"Use it to set up “Siege Banner”. Increases the damage of allies whose bases are within the banner’s range by 100, lasting 30 minute, cooldown 72 hours (stack up to 5 times)", max:1 },
+    { id:"s4_e5_3", tier:20, slot:2, icon:"icon/professional_insight.png", name:"Professional Insights", desc:"Use to instantly gain 2% (up to 10%) of your current level’s Profession EXP, up to a maximum of 100,000, with a cooldown of 23.5 hours.", max:5 },
+    //Lv.25
+    { id:"s4_e6_1", tier:25, slot:0, icon:"icon/siege_inspiration.png", name:"Siege Inspiration", desc:"Increased Profession EXP from damaging City Durability by 20% (based on level).", max:3 },
+    { id:"s4_e6_2", tier:25, slot:1, icon:"icon/friendly_aid.png", name:"Friendly Aid", desc:"When reinforcing an ally’s base, the casualty rate of the Drill Ground’s units decreases (not stackable) by 5% (based on level).", max:5 },
+    { id:"s4_e6_3", tier:25, slot:2, icon:"icon/trade_discount.png", name:"Trade Discount", desc:"Enjoy 10% extra discounts when purchasing items from Trade Posts.", max:1 },
+    //Lv.30
+    { id:"s4_e7_1", tier:30, slot:0, icon:"icon/cooperative_construction.png", name:"Cooperative Construction", desc:"Boost building speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack).", max:2 },
+    { id:"s4_e7_2", tier:30, slot:1, icon:"icon/cooperative_research.png", name:"Cooperative Research", desc:"Boost research speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack)", max:2 },
+    { id:"s4_e7_3", tier:30, slot:2, icon:"icon/top_up_exp.png", name:"Top Up EXP", desc:"After the electrician powers up the units in the world and returns home, they will earn additional Profession EXP equal to the charging power * 1. The daily limit is 100k profession exp points.", max:1 },
+    //Lv.35
+    { id:"s4_e8_1", tier:35, slot:0, icon:"icon/resource_saving.png", name:"Resource-Saving", desc:"Reduce the cost of Food, Iron, and Coin for construction by 1/2/3/4/5%.", max:5 },
+    { id:"s4_e8_2", tier:35, slot:1, icon:"icon/recycling.png", name:"Recycling", desc:"Reduce the cost of Food, Iron, and Coin for research by 1/2/3/4/5%.", max:5 },
+    { id:"s4_e8_3", tier:35, slot:2, icon:"icon/fragile_spell.png", name:"Fragile Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the target base’s max durability by 1,000 (up to 5000)", max:1 },
+    //Lv.40
+    { id:"s4_e9_1", tier:40, slot:0, icon:"icon/medical_aid.png", name:"Medial Aid", desc:"Choose an Ally to use. After use, both yours and their Hospital’s Capacity increase by 10/20/30/40/50%, lasting for 240 minutes, cooldown 72 hours (multiple instances do not stack)", max:5 },
+    { id:"s4_e9_2", tier:40, slot:1, icon:"icon/buddy_shield.png", name:"Buddy Shield", desc:"Activate a shield for 1/2/4 hours for yourself or an ally, with a 71.5-hour cooldown (effects do not stack)", max:3 },
+    { id:"s4_e9_3", tier:40, slot:2, icon:"icon/shrinking_spell.png", name:"Shrinking Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the visual size of the target base by 15% stacking up to 5 times.", max:1, requires: [{ id:"s4_e8_3", min: 1 }] },
+    //Lv.45
+    { id:"s4_e10_1", tier:45, slot:0, icon:"icon/drone_supply.png", name:"Drone Supply", desc:"Use this item to get a level 1/2/3/4/5 Engineer skill reward. Cooldown 23.5h", max:5 },
+    { id:"s4_e10_2", tier:45, slot:1, icon:"icon/fearless_defense.png", name:"Fearless Defense", desc:"When defending the base, a proportion of the attacking units will be killed based on the level and number of your fallen units +1% (up to 5%)", max:5 },
+    { id:"s4_e10_3", tier:45, slot:2, icon:"icon/blood_night_hunter.png", name:"Blood Night Hunter", desc:"After Blood Night Descends, you can use it to become a Blood Night Hunter (week 2 with the appropriate event), gaining exclusive Buffs, until eliminated or the event ends, with a cooldown of 71.5 hour(s) (unaffected by the One More Time Skill). During War’s Eve event the cooldown will be reduced to 47.5h.", max:1 },
+    //Lv.50
+    { id:"s4_e11_1", tier:50, slot:0, icon:"icon/random_visitor.png", name:"Random Visitors", desc:"Get 1 random survivor. 119.5 hours (down to 23.5 hours) cooldown", max:5 },
+    { id:"s4_e11_2", tier:50, slot:1, icon:"icon/durability_mine.png", name:"Durability Mine", desc:"Deploy a [Durability Landmine] in the original Warzone. When triggered, it lowers the target’s durability by 500 points, At max level, it can ignite the enemy base. The mine lasts 24-hour, cooldown 72 hours. You can store up to 2.", max:5 },
+    { id:"s4_e11_3", tier:50, slot:2, icon:"icon/blood_night_hunter_teleport.png", name:"Blood Night Hunter Teleport", desc:"After becoming a Blood Night Hunter, you gain one [Hunter Teleport] count every 60 second(s) (unaffected by the One More Time skill). Hunter Teleport: During the period as a Blood Night Hunter, ‘Advanced Teleporter’ items cannot be used, only this skill can be used for advanced teleport.", max:1, requires: [{ id:"s4_e10_3", min: 1 }] },
+    //Lv.55
+    { id:"s4_e12_1", tier:55, slot:0, icon:"icon/one_more.png", name:"One More", desc:"The daily task points chest has a 5% (up to 25%) chance to double your rewards.", max:5 },
+    { id:"s4_e12_2", tier:55, slot:1, icon:"icon/support_boost.png", name:"Support Boost", desc:"Time helped per action +30 seconds ( up to 150 seconds)", max:5 },
+    { id:"s4_e12_3", tier:55, slot:2, icon:"icon/hunting_inspiration.png", name:"Hunting Inspiration", desc:"After becoming a Blood Night Hunter, earn 30000 Profession EXP for each Blood Night Hunter you eliminate, up to a maximum of 5 per round (unaffected by the One More Time skill).", max:1, requires: [{ id:"s4_e11_3", min: 1 }] },
+    //Lv.60
+    { id:"s4_e13_1", tier:60, slot:0, icon:"icon/efficient_gathering.png", name:"Efficient Gathering", desc:"Gathering speed +5 % (up to 25 % )", max:5 },
+    { id:"s4_e13_2", tier:60, slot:1, icon:"icon/first_aid_expert.png", name:"First Aid Expert", desc:"When defeated, the proportion entering the Emergency Center +1/2/3/4/5%", max:5 },
+    { id:"s4_e13_3", tier:60, slot:2, icon:"icon/electrician_rally_call.png", name:"Electrician Rally Call", desc:"Use to send an Electrician Rally Message to your alliance. Allies can quickly assist with electricians. Lasts for 10 minute(s). Cooldown: 23.5 hour(s).", max:1 },
+    //Lv.65
+    { id:"s4_e14_1", tier:65, slot:0, icon:"icon/battlefield_cleanup.png", name:"Battlefield Cleanup", desc:"After defeating Ironhead, Glutton, Miser, and Doom Elites, the gain for Coin, Food, and Iron +2/4/6/8/10%", max:5 },
+    { id:"s4_e14_2", tier:65, slot:1, icon:"icon/master_builder.png", name:"Master Builder", desc:"Building speedup +5 % (up to +25 %)", max:5 },
+    { id:"s4_e14_3", tier:65, slot:2, icon:"icon/flare.png", name:"Flare", desc:"Use to illuminate a 9-tile radius with L1 Light (can reveal Mini Maneki-neko) for 5 minute(s). Effects do not stack. Cooldown: 47.5 hour(s). Note: This is similar to the bomb we had in Season 2.", max:1 },
+    //Lv.70
+    { id:"s4_e15_1", tier:70, slot:0, icon:"icon/instant_gathering.png", name:"Instant Gathering", desc:"When used, all squads currently gathering at iron mines, farmland, or gold mines will immediately collect the remaining resources from the gathering tile and return (cannot exceed the squad’s load capacity). Cooldown: 119.5 hours (down to 23.5 hours). Only usable in your home warzone.", max:5 },
+    { id:"s4_e15_2", tier:70, slot:1, icon:"icon/monster _tracking.png", name:"Monster Tracking", desc:"Marching speed against monsters +5 % (up to 25 %)", max:5 },
+    { id:"s4_e15_3", tier:70, slot:2, icon:"icon/lightfall.png", name:"Lightfall", desc:"Once the enemy base is breached, their lighthouse will be extinguished and cannot be relight for the next 3 minute(s). Additionally, 3-5 allied electricians dispatched to that base will be randomly sent back.", max:1 },
+    //Lv.75
+    { id:"s4_e16_1", tier:75, slot:0, icon:"icon/win_win_cooperation.png", name:"Win-Win Cooperation", desc:"Can only be used on the War Leader Reduces their construction and tech research costs by 5% for 24 hours. Earn 1 rewards. Cooldown: 23.5 hours.", max:1 },
+    { id:"s4_e16_2", tier:75, slot:1, icon:"icon/free_teleport.png", name:"Free Teleport", desc:"Gain one free Advanced Teleport chance every 71.5 hours, up to 1 (up to 3) stored at a time.", max:3 },
+    { id:"s4_e16_3", tier:75, slot:2, icon:"icon/disruption_mine.png", name:"Disruption Mine", desc:"You can deploy a [Disruption Mine] in empty tiles of the original warzone: If triggered by an enemy, they can’t turn on the light for 3 minutes. The mine remains active for 24 hour and has a cooldown of 23.5 hours. Disruption Mine: Commanders from the same warzone and faction are immune. Triggered when other commanders relocate and make contact.", max:1 },
+    //Lv.80
+    { id:"s4_e17_1", tier:80, slot:0, icon:"icon/trucks_expansion.png", name:"Truck Expansion", desc:"Increases the amount of Iron, Food, and Coins carried by the Truck by +5 % (up to 25%).", max:5 },
+    { id:"s4_e17_2", tier:80, slot:1, icon:"icon/helping_hand.png", name:"Helping Hand", desc:"Increases the number of helps received by +1 (up to +5)", max:5 },
+    { id:"s4_e17_3", tier:80, slot:2, icon:"icon/oni_summon.png", name:"Oni Summon", desc:"Duration: 5 minutes. While active, the Blood Night Oni Legion can be attracted to follow your troops. Should they lose their target, they’ll turn on the brightest nearby base. Defeat the Blood Night Oni Legion to earn rewards. Cooldown 47.5 hour(s) (unaffected by the One More Time skill). IMPORTANT: you can learn it only starting from day 15 of the season", max:1 },
+    //Lv.85
+    { id:"s4_e18_1", tier:85, slot:0, icon:"icon/speedup_box.png", name:"Speedup Box", desc:"It grands 1 (up to 5) random speedup item(s). Cooldown: 23.5 hours", max:5 },
+    { id:"s4_e18_2", tier:85, slot:1, icon:"icon/emergency_capacity.png", name:"Emergency Capacity", desc:"Increase the capacity limit by 50/100/150/200/250 of the Emergency Center.", max:5 },
+    { id:"s4_e18_3", tier:85, slot:2, icon:"icon/summon_mummies.png", name:"Summon Mummies", desc:"Target an unshielded enemy commander to summon a mummy boss near your base. The boss will march to attack the target for 30 minutes, cooldown 71.5 hours. Enemy commander = Commanders from the same warzone and faction are immune. IMPORTANT: you need Protector’s Field at level 25 to learn (acquire) this skill.", max:1 },
+    //Lv.90
+    { id:"s4_e19_1", tier:90, slot:0, icon:"icon/willing_helper.png", name:"Willing Helper", desc:"When helping allies, you earn an extra 50 Alliance Contribution Points (does not affect contribution rankings). Daily limit: 4 times (up to 20).", max:5 },
+    { id:"s4_e19_2", tier:90, slot:1, icon:"icon/enhance_siege_banner.png", name:"Enhance Siege Banner", desc:"Upgrade the Siege Banner to gain an additional +10% rally and march speed {unlocks at Siege Banner max level), lasts 30 minutes, cooldown 71.5 hours (stacks up to 5 times).", max:1 },
+    //Lv.95
+    { id:"s4_e20_1", tier:95, slot:0, icon:"icon/coop_construction_II.png", name:"Cooperative Construction II", desc:"Cooperative Construction Upgrade: Each level adds +5% construction speed boost (unlocks at Cooperative Construction max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
+    { id:"s4_e20_2", tier:95, slot:1, icon:"icon/coop_research_II.png", name:"Cooperative Research II", desc:"Cooperative Research Upgrade: Each level adds +5% research speed boost (unlocks at Cooperative Research max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
+    //Lv.100
+    { id:"s4_e21_1", tier:100, slot:0, icon:"icon/one_more_time.png", name:"One More Time", desc:"When using an active skill (with a hexagon-shaped icon), there is a 4% (up to 20%) chance to skip cooldown. Each skill can trigger this effect only once per day.", max:5 },
+    { id:"s4_e21_2", tier:100, slot:1, icon:"icon/blast.png", name:"Blast", desc:"Use it on your base to activate War Fever mode, triggering a 60-second Blast countdown. The blast will damage nearby 3 base tiles, reducing their durability by 25%, Cooldown: 71.5 hours.", max:1 }
+  ]
+  /* Placeholder arrays for remaining trees (fill later) */
+  const EMPTY = [];
+  const ENGINEER_S1 = EMPTY;
+  const ENGINEER_S5 = EMPTY;
+  const WARLEADER_S1 = EMPTY, WARLEADER_S2 = EMPTY, WARLEADER_S3 = EMPTY, WARLEADER_S4 = EMPTY, WARLEADER_S5 = EMPTY;
 
-/* Your full TALENTS list continues… (kept as you provided) */
-const TALENTS = [
-  // Lv. 1
-  { id:"rp", tier:1, slot:0, icon:"🛡️", name:"Rapid Production", desc:"Use it to immediately gain 4 hours per Level of production from in-base Food, Iron and Coin buildings, cooldown 24 hours.", max:5 },
-  { id:"oc", tier:1, slot:1, icon:"⚔️", name:"Outstanding Contribution", desc:"Donating Tech helps increase Alliance Contribution earned.", max:1 },
-  { id:"ce", tier:1, slot:2, icon:"💉", name:"Combat Experience", desc:"Increased Profession EXP by 20% per level from killing monsters.", max:3 },
-  //Lv.5
-  { id:"a5", tier:5, slot:0, icon:"🛡️", name:"Extra Meal", desc:"The effect of Daily Freebie for stamina has been improved.", max:1 },
-  { id:"d5", tier:5, slot:1, icon:"⚔️", name:"Siege Mastery", desc:"Unit durability damage increases by 100 (based on level)", max:5 },
-  { id:"r5", tier:5, slot:2, icon:"💉", name:"Building Inspiration", desc:"Increased Profession EXP from upgrading Season building.", max:3 },
-  //Lv.10
-  { id:"a10", tier:10, slot:0, icon:"🛡️", name:"Build for Free", desc:"Increase free speed-up time for Constructions by 48 min per Level.", max:1 },
-  { id:"d10", tier:10, slot:1, icon:"⚔️", name:"Research for Free", desc:"Increase free speed-up time for Research by 48 min per Level.", max:5 },
-  { id:"r10", tier:10, slot:2, icon:"💉", name:"Double Exchange", desc:"Exchange two types of seasonal resources at 1:2 ration, consuming 5.000 (up to 25.000) and gaining 10.000 (up to 50.000), with a cooldown of 47.5 hours.", max:3 },
-  //Lv.15
-  { id:"a15", tier:15, slot:0, icon:"🛡️", name:"Build Now", desc:"Use it to immediately reduce all Construction Queue time by 120 minutes (based on level), cooldown 47.5 hours.", max:5 },
-  { id:"d15", tier:15, slot:1, icon:"⚔️", name:"Research Now", desc:"Use it to immediately reduce all Research Queue time by 240 minutes (based on level), cooldown 47.5 hours", max:5 },
-  { id:"r15", tier:15, slot:2, icon:"💉", name:"Contaminated Land Teleport", desc:"Gain a free Contaminated Land Teleport every 47.5 hours without consuming items, up to 1 stored at a time.", max:1 },
-  //Lv.20
-  { id:"a20", tier:20, slot:0, icon:"🛡️", name:"Rally Rush", desc:"Joining or returning with rallies boosts troop marching speed by 10/20/30/40/50%.", max:5 },
-  { id:"d20", tier:20, slot:1, icon:"⚔️", name:"Siege Banner", desc:"Use it to set up “Siege Banner”. Increases the damage of allies whose bases are within the banner’s range by 100, lasting 30 minute, cooldown 72 hours (stack up to 5 times)", max:1 },
-  { id:"r20", tier:20, slot:2, icon:"💉", name:"Professional Insights", desc:"Use to instantly gain 2% (up to 10%) of your current level’s Profession EXP, up to a maximum of 100,000, with a cooldown of 23.5 hours.", max:5 },
-  //Lv.25
-  { id:"a25", tier:25, slot:0, icon:"🛡️", name:"Siege Inspiration", desc:"Increased Profession EXP from damaging City Durability by 20% (based on level).", max:3 },
-  { id:"d25", tier:25, slot:1, icon:"⚔️", name:"Friendly Aid", desc:"When reinforcing an ally’s base, the casualty rate of the Drill Ground’s units decreases (not stackable) by 5% (based on level).", max:5 },
-  { id:"r25", tier:25, slot:2, icon:"💉", name:"Trade Discount", desc:"Enjoy 10% extra discounts when purchasing items from Trade Posts.", max:1 },
-  //Lv.30
-  { id:"a30", tier:30, slot:0, icon:"🛡️", name:"Cooperative Construction", desc:"Boost building speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack).", max:2 },
-  { id:"d30", tier:30, slot:1, icon:"⚔️", name:"Cooperative Research", desc:"Boost research speed by 10% (based on level) for both you and a selected ally for 60 minutes, with a 23.5 hours cooldown (multiple instances do not stack)", max:2 },
-  { id:"r30", tier:30, slot:2, icon:"💉", name:"Top Up EXP", desc:"After the electrician powers up the units in the world and returns home, they will earn additional Profession EXP equal to the charging power * 1. The daily limit is 100k profession exp points.", max:1 },
-  //Lv.35
-  { id:"a35", tier:35, slot:0, icon:"🛡️", name:"Resource-Saving", desc:"Reduce the cost of Food, Iron, and Coin for construction by 1/2/3/4/5%.", max:5 },
-  { id:"d35", tier:35, slot:1, icon:"⚔️", name:"Recycling", desc:"Reduce the cost of Food, Iron, and Coin for research by 1/2/3/4/5%.", max:5 },
-  { id:"r35", tier:35, slot:2, icon:"💉", name:"Fragile Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the target base’s max durability by 1,000 (up to 5000)", max:1 },
-  //Lv.40
-  { id:"a40", tier:40, slot:0, icon:"🛡️", name:"Medial Aid", desc:"Choose an Ally to use. After use, both yours and their Hospital’s Capacity increase by 10/20/30/40/50%, lasting for 240 minutes, cooldown 72 hours (multiple instances do not stack)", max:5 },
-  { id:"d40", tier:40, slot:1, icon:"⚔️", name:"Buddy Shield", desc:"Activate a shield for 1/2/4 hours for yourself or an ally, with a 71.5-hour cooldown (effects do not stack)", max:3 },
-  { id:"r40", tier:40, slot:2, icon:"💉", name:"Shrinking Spell", desc:"When Desert Protectors defeat an enemy base, they reduce the visual size of the target base by 15% stacking up to 5 times.", max:1 },
-  //Lv.45
-  { id:"a45", tier:45, slot:0, icon:"🛡️", name:"Drone Supply", desc:"Use this item to get a level 1/2/3/4/5 Engineer skill reward. Cooldown 23.5h", max:5 },
-  { id:"d45", tier:45, slot:1, icon:"⚔️", name:"Suicide Squad", desc:"When defending the base, a proportion of the attacking units will be killed based on the level and number of your fallen units +1% (up to 5%)", max:5 },
-  { id:"r45", tier:45, slot:2, icon:"💉", name:"Blood Night Hunter", desc:"After Blood Night Descends, you can use it to become a Blood Night Hunter (week 2 with the appropriate event), gaining exclusive Buffs, until eliminated or the event ends, with a cooldown of 71.5 hour(s) (unaffected by the One More Time Skill). During War’s Eve event the cooldown will be reduced to 47.5h.", max:1 },
-  //Lv.50
-  { id:"a50", tier:50, slot:0, icon:"🛡️", name:"Random Visitors", desc:"Get 1 random survivor. 119.5 hours (down to 23.5 hours) cooldown", max:5 },
-  { id:"d50", tier:50, slot:1, icon:"⚔️", name:"Durability Mine", desc:"Deploy a [Durability Landmine] in the original Warzone. When triggered, it lowers the target’s durability by 500 points, At max level, it can ignite the enemy base. The mine lasts 24-hour, cooldown 72 hours. You can store up to 2.", max:5 },
-  { id:"r50", tier:50, slot:2, icon:"💉", name:"Blood Night Hunter Teleport", desc:"After becoming a Blood Night Hunter, you gain one [Hunter Teleport] count every 60 second(s) (unaffected by the One More Time skill). Hunter Teleport: During the period as a Blood Night Hunter, ‘Advanced Teleporter’ items cannot be used, only this skill can be used for advanced teleport.", max:1 },
-  //Lv.55
-  { id:"a55", tier:55, slot:0, icon:"🛡️", name:"One More", desc:"The daily task points chest has a 5% (up to 25%) chance to double your rewards.", max:5 },
-  { id:"d55", tier:55, slot:1, icon:"⚔️", name:"Support Boost", desc:"Time helped per action +30 seconds ( up to 150 seconds)", max:5 },
-  { id:"r55", tier:55, slot:2, icon:"💉", name:"Hunting Inspiration", desc:"After becoming a Blood Night Hunter, earn 30000 Profession EXP for each Blood Night Hunter you eliminate, up to a maximum of 5 per round (unaffected by the One More Time skill).", max:1 },
-  //Lv.60
-  { id:"a60", tier:60, slot:0, icon:"🛡️", name:"Efficient Gathering", desc:"Gathering speed +5 % (up to 25 % )", max:5 },
-  { id:"d60", tier:60, slot:1, icon:"⚔️", name:"First Aid Expert", desc:"When defeated, the proportion entering the Emergency Center +1/2/3/4/5%", max:5 },
-  { id:"r60", tier:60, slot:2, icon:"💉", name:"Electrician Rally Call", desc:"Use to send an Electrician Rally Message to your alliance. Allies can quickly assist with electricians. Lasts for 10 minute(s). Cooldown: 23.5 hour(s).", max:1 },
-  //Lv.65
-  { id:"a65", tier:65, slot:0, icon:"🛡️", name:"Battlefield Cleanup", desc:"After defeating Ironhead, Glutton, Miser, and Doom Elites, the gain for Coin, Food, and Iron +2/4/6/8/10%", max:5 },
-  { id:"d65", tier:65, slot:1, icon:"⚔️", name:"Master Builder", desc:"Building speedup +5 % (up to +25 %)", max:5 },
-  { id:"r65", tier:65, slot:2, icon:"💉", name:"Flare", desc:"Use to illuminate a 9-tile radius with L1 Light (can reveal Mini Maneki-neko) for 5 minute(s). Effects do not stack. Cooldown: 47.5 hour(s). Note: This is similar to the bomb we had in Season 2.", max:1 },
-  //Lv.70
-  { id:"a70", tier:70, slot:0, icon:"🛡️", name:"Instant Gathering", desc:"When used, all squads currently gathering at iron mines, farmland, or gold mines will immediately collect the remaining resources from the gathering tile and return (cannot exceed the squad’s load capacity). Cooldown: 119.5 hours (down to 23.5 hours). Only usable in your home warzone.", max:5 },
-  { id:"d70", tier:70, slot:1, icon:"⚔️", name:"Monster Tracking", desc:"Marching speed against monsters +5 % (up to 25 %)", max:5 },
-  { id:"r70", tier:70, slot:2, icon:"💉", name:"Lightfall", desc:"Once the enemy base is breached, their lighthouse will be extinguished and cannot be relight for the next 3 minute(s). Additionally, 3-5 allied electricians dispatched to that base will be randomly sent back.", max:1 },
-  //Lv.75
-  { id:"a75", tier:75, slot:0, icon:"🛡️", name:"Win-Win Cooperation", desc:"Can only be used on the War Leader Reduces their construction and tech research costs by 5% for 24 hours. Earn 1 rewards. Cooldown: 23.5 hours.", max:1 },
-  { id:"d75", tier:75, slot:1, icon:"⚔️", name:"Free Teleport", desc:"Gain one free Advanced Teleport chance every 71.5 hours, up to 1 (up to 3) stored at a time.", max:3 },
-  { id:"r75", tier:75, slot:2, icon:"💉", name:"Disruption Mine", desc:"You can deploy a [Disruption Mine] in empty tiles of the original warzone: If triggered by an enemy, they can’t turn on the light for 3 minutes. The mine remains active for 24 hour and has a cooldown of 23.5 hours. Disruption Mine: Commanders from the same warzone and faction are immune. Triggered when other commanders relocate and make contact.", max:1 },
-  //Lv.80
-  { id:"a80", tier:80, slot:0, icon:"🛡️", name:"Truck Expansion", desc:"Increases the amount of Iron, Food, and Coins carried by the Truck by +5 % (up to 25%).", max:5 },
-  { id:"d80", tier:80, slot:1, icon:"⚔️", name:"Helping Hand", desc:"Increases the number of helps received by +1 (up to +5)", max:5 },
-  { id:"r80", tier:80, slot:2, icon:"💉", name:"Oni Summon", desc:"Duration: 5 minutes. While active, the Blood Night Oni Legion can be attracted to follow your troops. Should they lose their target, they’ll turn on the brightest nearby base. Defeat the Blood Night Oni Legion to earn rewards. Cooldown 47.5 hour(s) (unaffected by the One More Time skill). IMPORTANT: you can learn it only starting from day 15 of the season", max:1 },
-  //Lv.85
-  { id:"a85", tier:85, slot:0, icon:"🛡️", name:"Speedup Box", desc:"It grands 1 (up to 5) random speedup item(s). Cooldown: 23.5 hours", max:5 },
-  { id:"d85", tier:85, slot:1, icon:"⚔️", name:"Emergency Capacity", desc:"Increase the capacity limit by 50/100/150/200/250 of the Emergency Center.", max:5 },
-  { id:"r85", tier:85, slot:2, icon:"💉", name:"Summon Mummies", desc:"Target an unshielded enemy commander to summon a mummy boss near your base. The boss will march to attack the target for 30 minutes, cooldown 71.5 hours. Enemy commander = Commanders from the same warzone and faction are immune. IMPORTANT: you need Protector’s Field at level 25 to learn (acquire) this skill.", max:1 },
-  //Lv.90
-  { id:"a90", tier:90, slot:0, icon:"🛡️", name:"Willing Helper", desc:"When helping allies, you earn an extra 50 Alliance Contribution Points (does not affect contribution rankings). Daily limit: 4 times (up to 20).", max:5 },
-  { id:"d90", tier:90, slot:1, icon:"⚔️", name:"Enhance Siege Banner", desc:"Upgrade the Siege Banner to gain an additional +10% rally and march speed {unlocks at Siege Banner max level), lasts 30 minutes, cooldown 71.5 hours (stacks up to 5 times).", max:1 },
-  { id:"r90", tier:90, slot:2, icon:"💉", name:"Regen", desc:"+1 HP/s", max:5 },
-  //Lv.95
-  { id:"a95", tier:95, slot:0, icon:"🛡️", name:"Cooperative Construction II", desc:"Cooperative Construction Upgrade: Each level adds +5% construction speed boost (unlocks at Cooperative Construction max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
-  { id:"d95", tier:95, slot:1, icon:"⚔️", name:"Cooperative Research II", desc:"Cooperative Research Upgrade: Each level adds +5% research speed boost (unlocks at Cooperative Research max level), lasts 60 minutes, cooldown: 23,5 hours", max:5 },
-  //Lv.100
-  { id:"a100", tier:100, slot:0, icon:"🛡️", name:"One More Time", desc:"When using an active skill (with a hexagon-shaped icon), there is a 4% (up to 20%) chance to skip cooldown. Each skill can trigger this effect only once per day.", max:5 },
-  { id:"d100", tier:100, slot:1, icon:"⚔️", name:"Blast", desc:"Use it on your base to activate War Fever mode, triggering a 60-second Blast countdown. The blast will damage nearby 3 base tiles, reducing their durability by 25%, Cooldown: 71.5 hours.", max:1 }
-];
+  /* Tree registry (10 total) */
+  const TREES = {
+    eng_s1: { label: "Engineer • Season 1", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: ENGINEER_S1 },
+    eng_s2: { label: "Engineer • Season 2", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: ENGINEER_S2 },
+    eng_s3: { label: "Engineer • Season 3", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: ENGINEER_S3 },
+    eng_s4: { label: "Engineer • Season 4", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: ENGINEER_S4 },
+    eng_s5: { label: "Engineer • Season 5", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: ENGINEER_S5 },
 
-const state = { points:Object.fromEntries(TALENTS.map(t=>[t.id,0])) };
+    wl_s1:  { label: "War Leader • Season 1", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: WARLEADER_S1 },
+    wl_s2:  { label: "War Leader • Season 2", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: WARLEADER_S2 },
+    wl_s3:  { label: "War Leader • Season 3", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: WARLEADER_S3 },
+    wl_s4:  { label: "War Leader • Season 4", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: WARLEADER_S4 },
+    wl_s5:  { label: "War Leader • Season 5", defaultBudget: 115, tiers: TIERS_DEFAULT, talents: WARLEADER_S5 },
+  };
 
-const rowsEl = document.getElementById("rows");
-const spentEl = document.getElementById("spent");
-document.getElementById("hint").textContent = `${TIERS.length} tiers • 3 skills per tier`;
+  /* =========================
+     STATE
+     ========================= */
+  const treeStates = {}; // { treeKey: { points:{id:val}, budget:number } }
+  let activeTreeKey = "eng_s2";
+  let TIERS = TIERS_DEFAULT;
+  let TALENTS = ENGINEER_S2;
+  let state = null;
 
-const tooltip = document.getElementById("tooltip");
-const ttTitle = document.getElementById("ttTitle");
-const ttDesc  = document.getElementById("ttDesc");
+  /* For partial updates */
+  const talentDomById = new Map(); // id -> {talent, badge, plus, minus, info, root}
 
-/* Budget input wiring */
-const budgetInput = document.getElementById("budgetInput");
-POINT_BUDGET = Math.max(0, Math.floor(Number(budgetInput.value) || 0));
-budgetInput.addEventListener("input", () => {
-  POINT_BUDGET = Math.max(0, Math.floor(Number(budgetInput.value) || 0));
-  render();
-});
+  /* =========================
+     DEPENDENCIES (per active tree)
+     ========================= */
+  let talentById = new Map();       // id -> talent (active tree)
+  let dependentsById = new Map();   // id -> Set(dependentId)
 
-/* ===== Build Share (encode/decode) ===== */
-function b64urlEncode(str){
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function b64urlDecode(str){
-  const pad = str.length % 4 ? "=".repeat(4 - (str.length % 4)) : "";
-  const b64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
-  return decodeURIComponent(escape(atob(b64)));
-}
+  function rebuildDependencyIndex(){
+    talentById = new Map(TALENTS.map(t => [t.id, t]));
+    dependentsById = new Map();
 
-function serializeBuild(){
-  const pts = Object.entries(state.points).filter(([,v]) => (v|0) > 0);
-  return { v: 1, b: POINT_BUDGET, p: pts };
-}
-
-function applyBuild(payload){
-  if (!payload || payload.v !== 1 || !Array.isArray(payload.p)) return false;
-
-  if (typeof payload.b === "number" && Number.isFinite(payload.b)) {
-    POINT_BUDGET = Math.max(0, Math.floor(payload.b));
-    budgetInput.value = String(POINT_BUDGET);
+    for (const t of TALENTS){
+      const reqs = Array.isArray(t.requires) ? t.requires : [];
+      for (const r of reqs){
+        if (!r || !r.id) continue;
+        if (!dependentsById.has(r.id)) dependentsById.set(r.id, new Set());
+        dependentsById.get(r.id).add(t.id);
+      }
+    }
   }
 
-  for (const k of Object.keys(state.points)) state.points[k] = 0;
-
-  for (const pair of payload.p){
-    if (!Array.isArray(pair) || pair.length < 2) continue;
-    const id = pair[0];
-    const val = pair[1];
-    if (!(id in state.points)) continue;
-    const t = TALENTS.find(x => x.id === id);
-    const max = t ? t.max : 999;
-    state.points[id] = Math.max(0, Math.min(max, Math.floor(Number(val) || 0)));
+  function getReqs(t){
+    return Array.isArray(t.requires) ? t.requires : [];
   }
-  return true;
-}
 
-function buildCode(){
-  return b64urlEncode(JSON.stringify(serializeBuild()));
-}
-
-function loadCode(code){
-  try{
-    const payload = JSON.parse(b64urlDecode(code.trim()));
-    return applyBuild(payload);
-  }catch{
-    return false;
+  function isUnlocked(t){
+    const reqs = getReqs(t);
+    for (const r of reqs){
+      const need = Math.max(1, Math.floor(Number(r.min ?? 1)));
+      const have = state?.points?.[r.id] ?? 0;
+      if (have < need) return false;
+    }
+    return true;
   }
-}
 
-function shareLink(){
-  const url = new URL(window.location.href);
-  url.searchParams.set("build", buildCode());
-  return url.toString();
-}
+  function missingReqLines(t){
+    const reqs = getReqs(t);
+    if (!reqs.length) return [];
+    const lines = [];
+    for (const r of reqs){
+      if (!r || !r.id) continue;
+      const need = Math.max(1, Math.floor(Number(r.min ?? 1)));
+      const have = state?.points?.[r.id] ?? 0;
+      if (have >= need) continue;
+      const dep = talentById.get(r.id);
+      const depName = dep?.name ?? r.id;
+      lines.push(`• ${depName}: ${have}/${need}`);
+    }
+    return lines;
+  }
 
-/* Share UI */
-const copyLinkBtn = document.getElementById("copyLinkBtn");
-const copyCodeBtn = document.getElementById("copyCodeBtn");
-const buildBox = document.getElementById("buildBox");
-const loadBtn = document.getElementById("loadBtn");
+  /* Prevent decreasing a requirement below what any currently-spent dependent needs */
+  function canDecrease(id){
+    const cur = state?.points?.[id] ?? 0;
+    if (cur <= 0) return false;
+    const next = cur - 1;
 
-copyLinkBtn.addEventListener("click", async () => {
-  const link = shareLink();
-  const code = new URL(link).searchParams.get("build") || "";
-  if (buildBox) buildBox.value = code;
-  try { await navigator.clipboard.writeText(link); } catch {}
-});
+    const dependents = dependentsById.get(id);
+    if (!dependents || dependents.size === 0) return true;
 
-copyCodeBtn.addEventListener("click", async () => {
-  const code = buildCode();
-  if (buildBox) buildBox.value = code;
-  try { await navigator.clipboard.writeText(code); } catch {}
-});
+    for (const depId of dependents){
+      const depTalent = talentById.get(depId);
+      if (!depTalent) continue;
 
-loadBtn.addEventListener("click", () => {
-  const code = (buildBox?.value || "").trim();
-  if (!code) return;
-  if (loadCode(code)) render();
-});
+      const depSpent = state.points[depId] ?? 0;
+      if (depSpent <= 0) continue;
 
-/* Auto-load from URL */
-(function autoLoadFromUrl(){
-  const url = new URL(window.location.href);
-  const code = url.searchParams.get("build");
-  if (!code) return;
-  if (loadCode(code)) {
+      const reqs = getReqs(depTalent);
+      for (const r of reqs){
+        if (r?.id !== id) continue;
+        const need = Math.max(1, Math.floor(Number(r.min ?? 1)));
+        if (next < need) return false;
+      }
+    }
+    return true;
+  }
+
+  function explainDecreaseBlock(id){
+    const cur = state?.points?.[id] ?? 0;
+    const next = Math.max(0, cur - 1);
+    const dependents = dependentsById.get(id);
+    if (!dependents) return "Can't remove point.";
+
+    const lines = [];
+    const baseName = talentById.get(id)?.name ?? id;
+
+    for (const depId of dependents){
+      const depTalent = talentById.get(depId);
+      if (!depTalent) continue;
+      const depSpent = state.points[depId] ?? 0;
+      if (depSpent <= 0) continue;
+
+      for (const r of getReqs(depTalent)){
+        if (r?.id !== id) continue;
+        const need = Math.max(1, Math.floor(Number(r.min ?? 1)));
+        if (next < need){
+          lines.push(`• ${depTalent.name} requires ${need} point(s) in ${baseName}`);
+        }
+      }
+    }
+
+    return lines.length ? `Can't remove point:\n${lines.join("\n")}` : "Can't remove point.";
+  }
+
+  function buildInfoText(t){
+    const miss = missingReqLines(t);
+    const parts = [];
+
+    if (miss.length){
+      parts.push("Requires:");
+      parts.push(...miss);
+      parts.push("");
+    }
+
+    parts.push(`Tier ${t.tier}`);
+    parts.push("");
+    parts.push(t.desc || "");
+    return parts.join("\n");
+  }
+
+  /* =========================
+     DOM
+     ========================= */
+  const rowsEl = document.getElementById("rows");
+  const spentEl = document.getElementById("spent");
+  const hintEl = document.getElementById("hint");
+  const treeNameEl = document.getElementById("treeName");
+  const pageTitleEl = document.getElementById("pageTitle");
+
+  const budgetInput = document.getElementById("budgetInput");
+  const treeSelect = document.getElementById("treeSelect");
+
+  const copyLinkBtn = document.getElementById("copyLinkBtn");
+  const copyCodeBtn = document.getElementById("copyCodeBtn");
+  const buildBox = document.getElementById("buildBox");
+  const loadBtn = document.getElementById("loadBtn");
+  const resetBtn = document.getElementById("resetBtn");
+
+  /* Mobile quickbar DOM */
+  const spentMobileEl = document.getElementById("spentMobile");
+  const budgetMobileEl = document.getElementById("budgetMobile");
+  const treeSelectMobile = document.getElementById("treeSelectMobile");
+  const copyLinkBtnMobile = document.getElementById("copyLinkBtnMobile");
+  const resetBtnMobile = document.getElementById("resetBtnMobile");
+  const editBudgetBtn = document.getElementById("editBudgetBtn");
+
+  /* Desktop tooltip bubble */
+  const tooltip = document.getElementById("tooltip");
+  const ttTitle = document.getElementById("ttTitle");
+  const ttDesc  = document.getElementById("ttDesc");
+
+  /* Mobile bottom sheet */
+  const sheetBackdrop = document.getElementById("sheetBackdrop");
+  const sheet = document.getElementById("sheet");
+  const sheetTitle = document.getElementById("sheetTitle");
+  const sheetDesc = document.getElementById("sheetDesc");
+  const sheetCloseBtn = document.getElementById("sheetCloseBtn");
+
+  /* =========================
+     STORAGE
+     ========================= */
+  const STORAGE_KEY = "talentPlanner.multiTree.v1";
+
+  /* =========================
+     HELPERS
+     ========================= */
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, ch => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[ch]));
+  }
+
+  function isMobile(){
+    return window.matchMedia("(max-width: 720px)").matches;
+  }
+
+  function getSpent(){
+    return Object.values(state?.points || {}).reduce((a,b)=>a+(b|0),0);
+  }
+
+  /* =========================
+     Dynamic WIDTH from longest name
+     ========================= */
+  function updateTalentMinWidth(){
+    try{
+      const ctx = document.createElement("canvas").getContext("2d");
+      ctx.font = "900 13px system-ui, Segoe UI, Roboto, Arial";
+
+      let maxText = 0;
+      for (const t of TALENTS){
+        const w = ctx.measureText(String(t.name || "")).width;
+        if (w > maxText) maxText = w;
+      }
+
+      // overhead: icon 54 + gap 10 + padding ~24 + controls margin
+      let needed = Math.ceil(maxText + 54 + 10 + 24 + 120);
+      needed = Math.max(220, Math.min(560, needed));
+      document.documentElement.style.setProperty("--talentW", needed + "px");
+    } catch {}
+  }
+  window.addEventListener("resize", updateTalentMinWidth);
+
+  /* =========================
+     TOOLTIP / SHEET
+     ========================= */
+  let scrollLockY = 0;
+  function lockScroll(){
+    if (!isMobile()) return;
+    scrollLockY = window.scrollY || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollLockY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+  function unlockScroll(){
+    if (!isMobile()) return;
+    const top = document.body.style.top;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    const y = top ? Math.abs(parseInt(top, 10) || 0) : scrollLockY;
+    window.scrollTo(0, y);
+  }
+
+  function hideInfo(){
+    tooltip.classList.remove("show");
+    tooltip.setAttribute("aria-hidden","true");
+
+    sheet.classList.remove("show");
+    sheet.setAttribute("aria-hidden","true");
+    sheetBackdrop.classList.remove("show");
+    sheetBackdrop.setAttribute("aria-hidden","true");
+
+    unlockScroll();
+  }
+
+  function showInfoFromButton(btnEl, title, desc){
+    if (isMobile()){
+      sheetTitle.textContent = title || "";
+      sheetDesc.textContent = desc || "";
+      sheetBackdrop.classList.add("show");
+      sheetBackdrop.setAttribute("aria-hidden","false");
+      sheet.classList.add("show");
+      sheet.setAttribute("aria-hidden","false");
+      lockScroll();
+      return;
+    }
+
+    ttTitle.textContent = title || "";
+    ttDesc.textContent = desc || "";
+
+    tooltip.classList.add("show");
+    tooltip.setAttribute("aria-hidden","false");
+
+    const r = btnEl.getBoundingClientRect();
+    const pad = 10;
+
+    let left = r.right + pad;
+    let top  = r.top;
+
+    const tw = tooltip.offsetWidth || 360;
+    const th = tooltip.offsetHeight || 140;
+
+    if (left + tw > window.innerWidth - 8) left = Math.max(8, r.left - tw - pad);
+    if (top + th > window.innerHeight - 8) top = Math.max(8, window.innerHeight - th - 8);
+
+    tooltip.style.left = left + "px";
+    tooltip.style.top  = top + "px";
+  }
+
+  /* click outside closes */
+  document.addEventListener("click", () => hideInfo());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideInfo();
+  });
+  sheetBackdrop.addEventListener("click", () => hideInfo());
+  sheetCloseBtn.addEventListener("click", (e) => { e.stopPropagation(); hideInfo(); });
+
+  /* swipe-down to close sheet */
+  let dragStartY = 0;
+  let dragging = false;
+
+  sheet.addEventListener("pointerdown", (e) => {
+    if (!isMobile()) return;
+    const rect = sheet.getBoundingClientRect();
+    const nearTop = (e.clientY - rect.top) < 80;
+    const scrolledTop = sheet.scrollTop <= 0;
+    if (!nearTop && !scrolledTop) return;
+
+    dragging = true;
+    dragStartY = e.clientY;
+    sheet.setPointerCapture(e.pointerId);
+  });
+
+  sheet.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - dragStartY;
+    if (dy <= 0) {
+      sheet.style.transition = "none";
+      sheet.style.transform = "translateY(0px)";
+      return;
+    }
+    sheet.style.transition = "none";
+    sheet.style.transform = `translateY(${dy}px)`;
+  });
+
+  sheet.addEventListener("pointerup", (e) => {
+    if (!dragging) return;
+    dragging = false;
+
+    const rect = sheet.getBoundingClientRect();
+    const dy = e.clientY - dragStartY;
+
+    if (dy > Math.min(180, rect.height * 0.25)) {
+      sheet.style.transition = "transform .18s ease";
+      sheet.style.transform = "translateY(110%)";
+      setTimeout(() => {
+        sheet.style.transition = "";
+        sheet.style.transform = "";
+        hideInfo();
+      }, 180);
+    } else {
+      sheet.style.transition = "transform .18s ease";
+      sheet.style.transform = "translateY(0px)";
+      setTimeout(() => {
+        sheet.style.transition = "";
+        sheet.style.transform = "";
+      }, 180);
+    }
+  });
+  sheet.addEventListener("pointercancel", () => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = "";
+    sheet.style.transform = "";
+  });
+
+  /* prevent clicks inside tooltip/sheet from closing immediately */
+  tooltip.addEventListener("click", (e) => e.stopPropagation());
+  sheet.addEventListener("click", (e) => e.stopPropagation());
+
+  /* =========================
+     TREE STATE
+     ========================= */
+  function initTreeState(treeKey){
+    const tree = TREES[treeKey];
+    if (!tree) return;
+
+    if (!treeStates[treeKey]) {
+      treeStates[treeKey] = {
+        points: Object.fromEntries(tree.talents.map(t => [t.id, 0])),
+        budget: tree.defaultBudget
+      };
+    } else {
+      const st = treeStates[treeKey];
+      const valid = new Set(tree.talents.map(t => t.id));
+
+      for (const t of tree.talents) if (!(t.id in st.points)) st.points[t.id] = 0;
+      for (const id of Object.keys(st.points)) if (!valid.has(id)) delete st.points[id];
+
+      if (!Number.isFinite(st.budget)) st.budget = tree.defaultBudget;
+    }
+  }
+
+  function loadFromStorage(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data || data.v !== 1) return;
+
+      if (data.activeTree && TREES[data.activeTree]) activeTreeKey = data.activeTree;
+
+      if (data.states && typeof data.states === "object") {
+        for (const [treeKey, saved] of Object.entries(data.states)) {
+          if (!TREES[treeKey] || !saved) continue;
+          initTreeState(treeKey);
+
+          const st = treeStates[treeKey];
+          if (typeof saved.budget === "number" && Number.isFinite(saved.budget)) {
+            st.budget = Math.max(0, Math.floor(saved.budget));
+          }
+
+          if (saved.points && typeof saved.points === "object") {
+            const maxById = Object.fromEntries(TREES[treeKey].talents.map(t => [t.id, t.max]));
+            for (const [id, val] of Object.entries(saved.points)) {
+              if (!(id in st.points)) continue;
+              const max = maxById[id] ?? 999;
+              st.points[id] = Math.max(0, Math.min(max, Math.floor(Number(val) || 0)));
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  function saveToStorage(){
+    try{
+      const payload = {
+        v: 1,
+        activeTree: activeTreeKey,
+        states: Object.fromEntries(Object.entries(treeStates).map(([k, st]) => [
+          k, { budget: st.budget, points: st.points }
+        ]))
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
+  }
+
+  let _saveTimer = null;
+  function scheduleSave(){
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(saveToStorage, 150);
+  }
+
+  /* =========================
+     TREE LOADING
+     ========================= */
+  function loadTree(treeKey, {skipUrlUpdate=false} = {}){
+    if (!TREES[treeKey]) return;
+
+    activeTreeKey = treeKey;
+    const tree = TREES[treeKey];
+
+    TIERS = tree.tiers;
+    TALENTS = tree.talents;
+
+    initTreeState(treeKey);
+    state = treeStates[treeKey];
+
+    rebuildDependencyIndex();   // ✅ dependencies rebuild per tree
+    updateTalentMinWidth();
+
+    pageTitleEl.textContent = tree.label;
+    treeNameEl.textContent = tree.label;
+    hintEl.textContent = `${TIERS.length} tiers • 3 skills per tier`;
+
+    budgetInput.value = String(state.budget);
+    treeSelect.value = treeKey;
+
+    // mobile quickbar sync
+    treeSelectMobile.value = treeKey;
+    budgetMobileEl.textContent = String(state.budget);
+
+    if (!skipUrlUpdate){
+      const url = new URL(window.location.href);
+      url.searchParams.set("tree", treeKey);
+      history.replaceState(null, "", url);
+    }
+
+    hideInfo();
+    renderAll();
+    scheduleSave();
+  }
+
+  /* budget input (desktop) */
+  budgetInput.addEventListener("input", () => {
+    if (!state) return;
+    state.budget = Math.max(0, Math.floor(Number(budgetInput.value) || 0));
+    budgetMobileEl.textContent = String(state.budget);
+    updateSpentUI();
+    updateAllButtonsState();
+    scheduleSave();
+  });
+
+  /* tree select (desktop) */
+  treeSelect.addEventListener("change", () => {
+    loadTree(treeSelect.value);
+  });
+
+  /* =========================
+     Mobile quickbar actions
+     ========================= */
+  treeSelectMobile.addEventListener("change", () => {
+    loadTree(treeSelectMobile.value);
+  });
+
+  editBudgetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const current = state?.budget ?? 0;
+    const val = prompt("Set point budget:", String(current));
+    if (val === null) return;
+    state.budget = Math.max(0, Math.floor(Number(val) || 0));
+    budgetInput.value = String(state.budget);
+    budgetMobileEl.textContent = String(state.budget);
+    updateSpentUI();
+    updateAllButtonsState();
+    scheduleSave();
+  });
+
+  copyLinkBtnMobile.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const link = shareLink();
+    try { await navigator.clipboard.writeText(link); } catch {}
+  });
+
+  resetBtnMobile.addEventListener("click", (e) => {
+    e.stopPropagation();
+    for (const k of Object.keys(state.points)) state.points[k] = 0;
+    hideInfo();
+    renderAll();
+    scheduleSave();
+  });
+
+  /* =========================
+     SHARE (encode/decode)
+     ========================= */
+  function b64urlEncode(str){
+    return btoa(unescape(encodeURIComponent(str)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+  function b64urlDecode(str){
+    const pad = str.length % 4 ? "=".repeat(4 - (str.length % 4)) : "";
+    const b64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
+    return decodeURIComponent(escape(atob(b64)));
+  }
+
+  function serializeBuild(){
+    const pts = Object.entries(state.points).filter(([,v]) => (v|0) > 0);
+    return { v: 1, tree: activeTreeKey, b: state.budget, p: pts };
+  }
+  function applyBuild(payload){
+    if (!payload || payload.v !== 1) return false;
+    if (payload.tree && TREES[payload.tree]) loadTree(payload.tree);
+
+    if (!Array.isArray(payload.p)) return false;
+
+    if (typeof payload.b === "number" && Number.isFinite(payload.b)) {
+      state.budget = Math.max(0, Math.floor(payload.b));
+      budgetInput.value = String(state.budget);
+      budgetMobileEl.textContent = String(state.budget);
+    }
+
+    for (const k of Object.keys(state.points)) state.points[k] = 0;
+
+    const maxById = Object.fromEntries(TALENTS.map(t => [t.id, t.max]));
+    for (const pair of payload.p){
+      if (!Array.isArray(pair) || pair.length < 2) continue;
+      const id = pair[0];
+      const val = pair[1];
+      if (!(id in state.points)) continue;
+      const max = maxById[id] ?? 999;
+      state.points[id] = Math.max(0, Math.min(max, Math.floor(Number(val) || 0)));
+    }
+
+    scheduleSave();
+    return true;
+  }
+  function buildCode(){
+    return b64urlEncode(JSON.stringify(serializeBuild()));
+  }
+  function loadCode(code){
+    try{
+      const payload = JSON.parse(b64urlDecode(code.trim()));
+      return applyBuild(payload);
+    }catch{
+      return false;
+    }
+  }
+  function shareLink(){
+    const url = new URL(window.location.href);
+    url.searchParams.set("tree", activeTreeKey);
+    url.searchParams.set("build", buildCode());
+    return url.toString();
+  }
+
+  /* Share UI (desktop) */
+  copyLinkBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const link = shareLink();
+    const code = new URL(link).searchParams.get("build") || "";
     if (buildBox) buildBox.value = code;
-    render();
+    try { await navigator.clipboard.writeText(link); } catch {}
+  });
+
+  copyCodeBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const code = buildCode();
+    if (buildBox) buildBox.value = code;
+    try { await navigator.clipboard.writeText(code); } catch {}
+  });
+
+  loadBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const code = (buildBox?.value || "").trim();
+    if (!code) return;
+    if (loadCode(code)) renderAll();
+  });
+
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    for (const k of Object.keys(state.points)) state.points[k] = 0;
+    hideInfo();
+    renderAll();
+    scheduleSave();
+  });
+
+  /* =========================
+     UI helpers (partial updates)
+     ========================= */
+  function updateSpentUI(){
+    const spent = getSpent();
+    spentEl.textContent = String(spent);
+    spentMobileEl.textContent = String(spent);
+    budgetMobileEl.textContent = String(state?.budget ?? 0);
   }
-})();
 
-render();
-
-function getSpent(){
-  return Object.values(state.points).reduce((a,b)=>a+b,0);
-}
-
-function render(){
-  rowsEl.innerHTML="";
-  for(const tier of TIERS){
-    const row=document.createElement("div");
-    row.className="row";
-
-    const tierBox=document.createElement("div");
-    tierBox.className="tier";
-    tierBox.textContent=tier;
-    row.appendChild(tierBox);
-
-    const bySlot=new Map(TALENTS.filter(t=>t.tier===tier).map(t=>[t.slot,t]));
-    for(let i=0;i<3;i++){
-      const t=bySlot.get(i);
-      if(!t){
-        const e=document.createElement("div");
-        e.className="talent";
-        e.style.opacity=0;
-        e.style.pointerEvents="none";
-        row.appendChild(e);
-      }else row.appendChild(renderTalent(t));
-    }
-    rowsEl.appendChild(row);
+  function computeStateClass(v, max){
+    return v===0 ? "state-red" : (v>=max ? "state-green" : "state-yellow");
   }
-  spentEl.textContent = String(getSpent());
-}
 
-function renderTalent(t){
-  const v=state.points[t.id];
-  const stateClass=v===0?"state-red":(v>=t.max?"state-green":"state-yellow");
+  function canAddPoint(t){
+    const v = state.points[t.id] ?? 0;
+    if (v >= t.max) return false;
+    if (getSpent() >= state.budget) return false;
+    if (v === 0 && !isUnlocked(t)) return false; // ✅ locked until requirements met
+    return true;
+  }
 
-  const el=document.createElement("div");
-  el.className="talent";
-  el.innerHTML=`
-    <div class="icon">${t.icon}</div>
-    <div class="meta">
-      <div class="tname">${t.name}</div>
-      <div class="badge ${stateClass}">${v}/${t.max}</div>
-      <div class="desc"></div>
-    </div>
-  `;
+  function canRemovePoint(t){
+    const v = state.points[t.id] ?? 0;
+    if (v <= 0) return false;
+    return canDecrease(t.id); // ✅ don't break dependents
+  }
 
-  el.onmouseenter=()=>showTooltip(`${t.name} (${state.points[t.id]}/${t.max})`,`Tier ${t.tier}\n\n${t.desc}`);
-  el.onmousemove=e=>moveTooltip(e.clientX,e.clientY);
-  el.onmouseleave=hideTooltip;
+  function updateTalentUI(id){
+    const dom = talentDomById.get(id);
+    if (!dom) return;
 
-  el.onclick=e=>{
-    const cur = state.points[t.id];
-    const add = e.shiftKey ? (t.max - cur) : 1;
-    if(getSpent() + add <= POINT_BUDGET){
-      state.points[t.id]=Math.min(t.max,cur+add);
-      render();
+    const t = dom.talent;
+    const v = state.points[id] ?? 0;
+
+    // locked state (locked if no points and requirements missing)
+    dom.root.classList.toggle("locked", (v === 0 && !isUnlocked(t)));
+
+    // badge
+    dom.badge.textContent = `${v}/${t.max}`;
+    dom.badge.classList.remove("state-red","state-yellow","state-green");
+    dom.badge.classList.add(computeStateClass(v, t.max));
+
+    dom.minus.disabled = !canRemovePoint(t);
+    dom.plus.disabled  = !canAddPoint(t);
+
+    // If info open and it's this talent, update title counts
+    const newTitle = `${t.name} (${v}/${t.max})`;
+    if (tooltip.classList.contains("show") && ttTitle.textContent.startsWith(t.name + " (")) {
+      ttTitle.textContent = newTitle;
     }
-  };
+    if (sheet.classList.contains("show") && sheetTitle.textContent.startsWith(t.name + " (")) {
+      sheetTitle.textContent = newTitle;
+    }
+  }
 
-  el.oncontextmenu=e=>{
-    e.preventDefault();
-    const cur = state.points[t.id];
-    state.points[t.id]=Math.max(0,cur-1);
-    render();
-  };
+  function updateAllButtonsState(){
+    for (const t of TALENTS){
+      const dom = talentDomById.get(t.id);
+      if (!dom) continue;
+      const v = state.points[t.id] ?? 0;
+      dom.root.classList.toggle("locked", (v === 0 && !isUnlocked(t)));
+      dom.minus.disabled = !canRemovePoint(t);
+      dom.plus.disabled  = !canAddPoint(t);
+    }
+  }
 
-  return el;
-}
+  /* =========================
+     Hold repeat for +/- (pointer)
+     ========================= */
+  function addHoldRepeat(button, fnStep){
+    let timer = null;
+    let repeat = null;
 
-function showTooltip(title,desc){
-  ttTitle.textContent=title;
-  ttDesc.textContent=desc;
-  tooltip.classList.add("show");
-}
-function hideTooltip(){ tooltip.classList.remove("show"); }
-function moveTooltip(x,y){
-  const pad=14;
-  tooltip.style.left=Math.min(x+pad,window.innerWidth-tooltip.offsetWidth-8)+"px";
-  tooltip.style.top=Math.min(y+pad,window.innerHeight-tooltip.offsetHeight-8)+"px";
-}
+    const stop = () => {
+      if (timer) clearTimeout(timer);
+      if (repeat) clearInterval(repeat);
+      timer = null;
+      repeat = null;
+    };
 
-document.getElementById("resetBtn").onclick=()=>{
-  Object.keys(state.points).forEach(k=>state.points[k]=0);
-  render();
-  hideTooltip();
-};
+    button.addEventListener("pointerdown", (e) => {
+      if (button.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      fnStep();
+
+      timer = setTimeout(() => {
+        repeat = setInterval(() => {
+          if (button.disabled) { stop(); return; }
+          fnStep();
+        }, 90);
+      }, 350);
+
+      button.setPointerCapture?.(e.pointerId);
+    });
+
+    button.addEventListener("pointerup", stop);
+    button.addEventListener("pointercancel", stop);
+    button.addEventListener("pointerleave", stop);
+  }
+
+  /* =========================
+     RENDER
+     ========================= */
+  function renderAll(){
+    talentDomById.clear();
+    rowsEl.innerHTML = "";
+
+    for(const tier of TIERS){
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const tierBox = document.createElement("div");
+      tierBox.className = "tier";
+      tierBox.textContent = tier;
+      row.appendChild(tierBox);
+
+      const bySlot = new Map(TALENTS.filter(t=>t.tier===tier).map(t=>[t.slot,t]));
+
+      for(let i=0;i<3;i++){
+        const t = bySlot.get(i);
+        if(!t){
+          const e = document.createElement("div");
+          e.className="talent";
+          e.style.opacity=0;
+          e.style.pointerEvents="none";
+          row.appendChild(e);
+          continue;
+        }
+        row.appendChild(renderTalent(t));
+      }
+
+      rowsEl.appendChild(row);
+    }
+
+    updateSpentUI();
+    updateAllButtonsState();
+  }
+
+  function renderTalent(t){
+    const v = state.points[t.id] ?? 0;
+    const stateClass = computeStateClass(v, t.max);
+
+    const locked = (v === 0 && !isUnlocked(t));
+
+    // icon: path => <img> else emoji/text
+    const iconHTML = (typeof t.icon === "string" && (t.icon.includes("/") || t.icon.includes(".")))
+      ? `<img src="${escapeHtml(t.icon)}" alt="">`
+      : escapeHtml(t.icon ?? "");
+
+    const el = document.createElement("div");
+    el.className = "talent" + (locked ? " locked" : "");
+    el.dataset.talentId = t.id;
+
+    el.innerHTML = `
+      <div class="icon">${iconHTML}</div>
+      <div class="meta">
+        <div class="tname" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</div>
+        <div class="pointRow">
+          <button class="pbtn minus" type="button" aria-label="Minus">−</button>
+          <div class="badge ${stateClass}">${v}/${t.max}</div>
+          <button class="pbtn plus" type="button" aria-label="Plus">+</button>
+          <button class="ibtn info" type="button" aria-label="Info">i</button>
+        </div>
+        <div class="desc"></div>
+      </div>
+    `;
+
+    const btnMinus = el.querySelector(".minus");
+    const btnPlus  = el.querySelector(".plus");
+    const btnInfo  = el.querySelector(".info");
+    const badge    = el.querySelector(".badge");
+
+    talentDomById.set(t.id, { talent: t, minus: btnMinus, plus: btnPlus, info: btnInfo, badge, root: el });
+
+    function addPoints(delta){
+      const cur = state.points[t.id] ?? 0;
+
+      // ✅ enforce dependencies on add
+      if (delta > 0 && cur === 0 && !isUnlocked(t)) {
+        showInfoFromButton(btnInfo, "Locked", buildInfoText(t));
+        return;
+      }
+
+      // ✅ enforce dependency safety on remove
+      if (delta < 0 && !canDecrease(t.id)) {
+        showInfoFromButton(btnInfo, "Can't remove point", explainDecreaseBlock(t.id));
+        return;
+      }
+
+      const next = Math.max(0, Math.min(t.max, cur + delta));
+      if (next === cur) return;
+
+      const inc = next - cur;
+      if (inc > 0 && (getSpent() + inc > state.budget)) return;
+
+      state.points[t.id] = next;
+
+      updateSpentUI();
+      updateTalentUI(t.id);
+      updateAllButtonsState();
+      scheduleSave();
+    }
+
+    btnMinus.addEventListener("click", (e) => { e.stopPropagation(); addPoints(-1); });
+    btnPlus.addEventListener("click", (e) => { e.stopPropagation(); addPoints(+1); });
+
+    addHoldRepeat(btnMinus, () => addPoints(-1));
+    addHoldRepeat(btnPlus,  () => addPoints(+1));
+
+    btnInfo.addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      const vv = state.points[t.id] ?? 0;
+      const title = `${t.name} (${vv}/${t.max})`;
+      const desc = buildInfoText(t);
+
+      const openTitle = isMobile() ? sheetTitle.textContent : ttTitle.textContent;
+      const isOpen = isMobile() ? sheet.classList.contains("show") : tooltip.classList.contains("show");
+      if (isOpen && openTitle === title) { hideInfo(); return; }
+
+      showInfoFromButton(btnInfo, title, desc);
+    });
+
+    // tile click shortcuts still work (but dependency-safe)
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".pbtn") || e.target.closest(".ibtn")) return;
+      const cur = state.points[t.id] ?? 0;
+      const add = e.shiftKey ? (t.max - cur) : 1;
+      if (add <= 0) return;
+
+      if (cur === 0 && !isUnlocked(t)){
+        showInfoFromButton(btnInfo, "Locked", buildInfoText(t));
+        return;
+      }
+
+      if (getSpent() + add <= state.budget){
+        state.points[t.id] = Math.min(t.max, cur + add);
+        updateSpentUI();
+        updateTalentUI(t.id);
+        updateAllButtonsState();
+        scheduleSave();
+      }
+    });
+
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (e.target.closest(".pbtn") || e.target.closest(".ibtn")) return;
+
+      const cur = state.points[t.id] ?? 0;
+      if (cur <= 0) return;
+
+      if (!canDecrease(t.id)){
+        showInfoFromButton(btnInfo, "Can't remove point", explainDecreaseBlock(t.id));
+        return;
+      }
+
+      state.points[t.id] = Math.max(0, cur - 1);
+      updateSpentUI();
+      updateTalentUI(t.id);
+      updateAllButtonsState();
+      scheduleSave();
+    });
+
+    // init disabled states
+    btnMinus.disabled = !canRemovePoint(t);
+    btnPlus.disabled  = !canAddPoint(t);
+
+    return el;
+  }
+
+  /* =========================
+     BOOT
+     ========================= */
+  loadFromStorage();
+
+  (function bootFromUrl(){
+    const url = new URL(window.location.href);
+
+    const treeParam = url.searchParams.get("tree");
+    if (treeParam && TREES[treeParam]) activeTreeKey = treeParam;
+
+    initTreeState(activeTreeKey);
+    loadTree(activeTreeKey, {skipUrlUpdate:true});
+
+    const buildParam = url.searchParams.get("build");
+    if (buildParam) {
+      if (loadCode(buildParam)) {
+        if (buildBox) buildBox.value = buildParam;
+        renderAll();
+      }
+    }
+  })();
 </script>
 </body>
 </html>

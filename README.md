@@ -1,1 +1,1 @@
-# lw_profession
+# Last War Profession Talent Calculator
